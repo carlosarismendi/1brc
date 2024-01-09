@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
+	"log"
 	"os"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,8 +14,7 @@ import (
 )
 
 const (
-	Workers  = 20
-	Reducers = 1
+	Workers = 20
 )
 
 type Station struct {
@@ -24,7 +26,7 @@ type Station struct {
 }
 
 type StationMap struct {
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	m     map[string]*Station
 }
 
@@ -36,10 +38,10 @@ func NewStationMap() *StationMap {
 
 func (sm *StationMap) Update(name string, temperature float64) {
 	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
-
 	s, ok := sm.m[name]
 	if ok {
+		sm.mutex.Unlock()
+
 		if temperature < s.Min {
 			s.Min = temperature
 		}
@@ -58,6 +60,8 @@ func (sm *StationMap) Update(name string, temperature float64) {
 			Sum:   temperature,
 			Count: 1,
 		}
+
+		sm.mutex.Unlock()
 	}
 }
 
@@ -72,9 +76,10 @@ func processLine(line string) (station string, temperature float64) {
 
 func printResults(stationsMap map[string]*Station) {
 	stations := make([]*Station, 0, len(stationsMap))
-	for _, v := range stationsMap {
-		stations = append(stations, v)
-		delete(stationsMap, v.Name)
+	for k := range stationsMap {
+		s := stationsMap[k]
+		stations = append(stations, s)
+		delete(stationsMap, s.Name)
 	}
 
 	sort.Slice(stations, func(i, j int) bool {
@@ -101,6 +106,7 @@ func worker(wg *sync.WaitGroup, input <-chan string, stationsMap *StationMap) {
 	}
 }
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 
 func main() {
 	measurementsFile := os.Getenv("MEASUREMENTS_FILE")
@@ -108,16 +114,26 @@ func main() {
 		panic("MEASUREMENTS_FILE environment variable not set")
 	}
 
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	stationsMap := NewStationMap()
 
-	linesCh := make(chan string, 10000)
+	linesCh := make(chan string, Workers*1000)
 
-	wgWorkers := &sync.WaitGroup{}
+	wgWorkers := sync.WaitGroup{}
 	wgWorkers.Add(Workers)
 	for i := 0; i < Workers; i++ {
-		go worker(wgWorkers, linesCh, stationsMap)
+		go worker(&wgWorkers, linesCh, stationsMap)
 	}
-	
+
 	// Open the file
 	file, err := os.Open(measurementsFile)
 	if err != nil {
@@ -135,7 +151,6 @@ func main() {
 
 	close(linesCh)
 	wgWorkers.Wait()
-
 
 	// Check for errors
 	if err := scanner.Err(); err != nil {
