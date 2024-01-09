@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -22,6 +21,44 @@ type Station struct {
 	Max   float64
 	Sum   float64
 	Count int
+}
+
+type StationMap struct {
+	mutex sync.Mutex
+	m     map[string]*Station
+}
+
+func NewStationMap() *StationMap {
+	return &StationMap{
+		m: make(map[string]*Station),
+	}
+}
+
+func (sm *StationMap) Update(name string, temperature float64) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	s, ok := sm.m[name]
+	if ok {
+		if temperature < s.Min {
+			s.Min = temperature
+		}
+
+		if temperature > s.Max {
+			s.Max = temperature
+		}
+
+		s.Sum += temperature
+		s.Count++
+	} else {
+		sm.m[name] = &Station{
+			Name:  name,
+			Min:   temperature,
+			Max:   temperature,
+			Sum:   temperature,
+			Count: 1,
+		}
+	}
 }
 
 func processLine(line string) (station string, temperature float64) {
@@ -55,39 +92,15 @@ func printResults(stationsMap map[string]*Station) {
 	fmt.Println(sb.String())
 }
 
-func worker(wg *sync.WaitGroup, input <-chan string, output chan<- *Station) {
+func worker(wg *sync.WaitGroup, input <-chan string, stationsMap *StationMap) {
 	defer wg.Done()
 
 	for line := range input {
 		name, temperature := processLine(line)
-		output <- &Station{
-			Name:  name,
-			Min:   temperature,
-			Max:   temperature,
-			Sum:   temperature,
-			Count: 1,
-		}
+		stationsMap.Update(name, temperature)
 	}
 }
 
-func reducer(wg *sync.WaitGroup, stationsMap map[string]*Station, input <-chan *Station) {
-	defer wg.Done()
-
-	for station := range input {
-		name := station.Name
-		temperature := station.Min
-
-		s, ok := stationsMap[name]
-		if ok {
-			s.Min = min(s.Min, temperature)
-			s.Max = max(s.Max, temperature)
-			s.Sum += temperature
-			s.Count++
-			continue
-		}
-		stationsMap[name] = station
-	}
-}
 
 func main() {
 	measurementsFile := os.Getenv("MEASUREMENTS_FILE")
@@ -95,25 +108,16 @@ func main() {
 		panic("MEASUREMENTS_FILE environment variable not set")
 	}
 
-	stationsMap := make(map[string]*Station)
+	stationsMap := NewStationMap()
 
 	linesCh := make(chan string, 10000)
-	stationsCh := make(chan *Station, 1)
 
 	wgWorkers := &sync.WaitGroup{}
 	wgWorkers.Add(Workers)
 	for i := 0; i < Workers; i++ {
-		go worker(wgWorkers, linesCh, stationsCh)
+		go worker(wgWorkers, linesCh, stationsMap)
 	}
-	log.Println("Workers started.")
-
-	wgReducers := &sync.WaitGroup{}
-	wgReducers.Add(Reducers)
-	for i := 0; i < Reducers; i++ {
-		go reducer(wgReducers, stationsMap, stationsCh)
-	}
-	log.Println("Reducers started.")
-
+	
 	// Open the file
 	file, err := os.Open(measurementsFile)
 	if err != nil {
@@ -129,21 +133,15 @@ func main() {
 		linesCh <- scanner.Text()
 	}
 
-	log.Println("Scanner finished.")
-
 	close(linesCh)
 	wgWorkers.Wait()
-	log.Println("Workers finished.")
 
-	close(stationsCh)
-	wgReducers.Wait()
-	log.Println("Reducers finished.")
 
 	// Check for errors
 	if err := scanner.Err(); err != nil {
 		panic(err)
 	}
 
-	printResults(stationsMap)
+	printResults(stationsMap.m)
 	fmt.Println("")
 }
