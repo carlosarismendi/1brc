@@ -11,7 +11,7 @@ ACTUAL_RESULTS_FILE=actual_results_$(AMOUNT).txt
 EXPECTED_RESULTS_FILE=expected_results_$(AMOUNT).txt
 
 .PHONY: build
-build:
+build: clean
 	go build -o $(BIN_FILE)
 
 .PHONY: time

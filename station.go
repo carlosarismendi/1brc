@@ -12,12 +12,12 @@ type Station struct {
 
 type StationMap struct {
 	mutex sync.RWMutex
-	m     map[string]*Station
+	m     map[string]Station
 }
 
 func NewStationMap() *StationMap {
 	return &StationMap{
-		m: make(map[string]*Station),
+		m: make(map[string]Station),
 	}
 }
 
@@ -35,12 +35,16 @@ func (sm *StationMap) Update(station Station) {
 
 		s.Sum += temperature
 		s.Count++
+		sm.m[s.Name] = s
 	} else {
-		sm.m[station.Name] = &station
+		sm.m[station.Name] = station
 	}
 }
 
 func (sm *StationMap) Add(name string, temperature float64) {
+	// sm.mutex.Lock()
+	// defer sm.mutex.Unlock()
+
 	s, ok := sm.m[name]
 	if ok {
 		if temperature < s.Min {
@@ -53,8 +57,9 @@ func (sm *StationMap) Add(name string, temperature float64) {
 
 		s.Sum += temperature
 		s.Count++
+		sm.m[s.Name] = s
 	} else {
-		sm.m[name] = &Station{
+		sm.m[name] = Station{
 			Name:  name,
 			Min:   temperature,
 			Max:   temperature,

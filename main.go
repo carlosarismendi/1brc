@@ -48,19 +48,19 @@ func (o *OneBRC) GetLine() (string, bool, error) {
 }
 
 func processLine(line string) (station string, temperature float64) {
-	v := strings.Split(line, ";")
-	temperature, err := strconv.ParseFloat(v[1], 64)
+	i := strings.LastIndex(line, ";")
+	temp, err := strconv.ParseFloat(line[i+1:], 64)
 	if err != nil {
 		panic(fmt.Errorf("Error parsing temperature for line %q. Error=%q.", line, err.Error()))
 	}
-	return v[0], temperature
+	return line[:i], temp
 }
 
-func printResults(stationsMap map[string]*Station) {
+func printResults(stationsMap map[string]Station) {
 	stations := make([]*Station, 0, len(stationsMap))
 	for k := range stationsMap {
 		s := stationsMap[k]
-		stations = append(stations, s)
+		stations = append(stations, &s)
 		delete(stationsMap, s.Name)
 	}
 
@@ -94,22 +94,33 @@ func worker(wg *sync.WaitGroup, input <-chan string, stations chan<- Station) {
 	}
 }
 
-func oneBrc(measurementsFile string) map[string]*Station {
+func oneBrc(measurementsFile string) map[string]Station {
 	o := NewOneBRC(measurementsFile)
 	defer o.Close()
 
 	stationsMap := NewStationMap()
 
-	// Read the file line by line
-	for {
-		line, ok, err := o.GetLine()
-		if !ok {
+	linesCh := make(chan string, 1000)
+
+	go func() {
+		// Read the file line by line
+		for {
+			line, ok, err := o.GetLine()
+			if ok {
+				linesCh <- line
+				continue
+			}
+
+			close(linesCh)
 			if err != nil {
 				panic(err)
 			}
 			break
 		}
+	}()
 
+	for line := range linesCh {
+		line := line
 		name, temperature := processLine(line)
 		stationsMap.Add(name, temperature)
 	}
