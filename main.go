@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"runtime/pprof"
@@ -11,15 +13,17 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 const (
-	Workers = 20
+	Workers = 12
 )
 
 type OneBRC struct {
-	file    *os.File
-	scanner *bufio.Scanner
+	mutex  sync.Mutex
+	file   *os.File
+	reader *bufio.Reader
 }
 
 func NewOneBRC(fileName string) *OneBRC {
@@ -27,10 +31,10 @@ func NewOneBRC(fileName string) *OneBRC {
 	if err != nil {
 		panic(err)
 	}
-	scanner := bufio.NewScanner(file)
+
 	return &OneBRC{
-		file:    file,
-		scanner: scanner,
+		file:   file,
+		reader: bufio.NewReader(file),
 	}
 }
 
@@ -39,12 +43,21 @@ func (o *OneBRC) Close() {
 }
 
 func (o *OneBRC) GetLine() (string, bool, error) {
-	ok := o.scanner.Scan()
-	if ok {
-		return o.scanner.Text(), true, nil
+	// o.mutex.Lock()
+	lineBytes, err := o.reader.ReadBytes('\n')
+	// o.mutex.Unlock()
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			return "", false, err
+		}
+
+		if len(lineBytes) == 0 {
+			return "", false, nil
+		}
 	}
 
-	return "", false, o.scanner.Err()
+	s := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes)-1)
+	return s, true, nil
 }
 
 func processLine(line string) (station string, temperature float64) {
@@ -56,11 +69,11 @@ func processLine(line string) (station string, temperature float64) {
 	return line[:i], temp
 }
 
-func printResults(stationsMap map[string]Station) {
+func printResults(stationsMap map[string]*Station) {
 	stations := make([]*Station, 0, len(stationsMap))
 	for k := range stationsMap {
 		s := stationsMap[k]
-		stations = append(stations, &s)
+		stations = append(stations, s)
 		delete(stationsMap, s.Name)
 	}
 
@@ -94,15 +107,18 @@ func worker(wg *sync.WaitGroup, input <-chan string, stations chan<- Station) {
 	}
 }
 
-func oneBrc(measurementsFile string) map[string]Station {
+func oneBrc(measurementsFile string) map[string]*Station {
 	o := NewOneBRC(measurementsFile)
 	defer o.Close()
 
 	stationsMap := NewStationMap()
 
-	linesCh := make(chan string, 1000)
-
+	linesCh := make(chan string, Workers*1000)
+	// wg := sync.WaitGroup{}
+	// wg.Add(Workers)
+	// for i := 0; i < Workers; i++ {
 	go func() {
+		// 		defer wg.Done()
 		// Read the file line by line
 		for {
 			line, ok, err := o.GetLine()
@@ -118,13 +134,23 @@ func oneBrc(measurementsFile string) map[string]Station {
 			break
 		}
 	}()
+	// }
 
+	// wg2 := sync.WaitGroup{}
+	// wg2.Add(1)
+	// go func() {
+	// 	defer wg2.Done()
 	for line := range linesCh {
 		line := line
 		name, temperature := processLine(line)
 		stationsMap.Add(name, temperature)
 	}
+	// }()
 
+	// wg.Wait()
+	// close(linesCh)
+
+	// wg2.Wait()
 	return stationsMap.m
 }
 
