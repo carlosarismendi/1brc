@@ -39,3 +39,27 @@ func (sm *StationMap) Update(station Station) {
 		sm.m[station.Name] = &station
 	}
 }
+
+func (sm *StationMap) Add(name string, temperature float64) {
+	s, ok := sm.m[name]
+	if ok {
+		if temperature < s.Min {
+			s.Min = temperature
+		}
+
+		if temperature > s.Max {
+			s.Max = temperature
+		}
+
+		s.Sum += temperature
+		s.Count++
+	} else {
+		sm.m[name] = &Station{
+			Name:  name,
+			Min:   temperature,
+			Max:   temperature,
+			Sum:   temperature,
+			Count: 1,
+		}
+	}
+}

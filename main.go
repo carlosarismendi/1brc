@@ -99,23 +99,6 @@ func oneBrc(measurementsFile string) map[string]*Station {
 	defer o.Close()
 
 	stationsMap := NewStationMap()
-	linesCh := make(chan string, 1000)
-
-	stationsCh := make(chan Station, 1000)
-	wgWorkers := sync.WaitGroup{}
-	wgWorkers.Add(Workers)
-	for i := 0; i < Workers; i++ {
-		go worker(&wgWorkers, linesCh, stationsCh)
-	}
-
-	wgReducer := sync.WaitGroup{}
-	wgReducer.Add(1)
-	go func() {
-		defer wgReducer.Done()
-		for station := range stationsCh {
-			stationsMap.Update(station)
-		}
-	}()
 
 	// Read the file line by line
 	for {
@@ -127,14 +110,9 @@ func oneBrc(measurementsFile string) map[string]*Station {
 			break
 		}
 
-		linesCh <- line
+		name, temperature := processLine(line)
+		stationsMap.Add(name, temperature)
 	}
-
-	close(linesCh)
-	wgWorkers.Wait()
-
-	close(stationsCh)
-	wgReducer.Wait()
 
 	return stationsMap.m
 }
