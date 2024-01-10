@@ -17,52 +17,34 @@ const (
 	Workers = 20
 )
 
-type Station struct {
-	Name  string
-	Min   float64
-	Max   float64
-	Sum   float64
-	Count int
+type OneBRC struct {
+	file    *os.File
+	scanner *bufio.Scanner
 }
 
-type StationMap struct {
-	mutex sync.RWMutex
-	m     map[string]*Station
-}
-
-func NewStationMap() *StationMap {
-	return &StationMap{
-		m: make(map[string]*Station),
+func NewOneBRC(fileName string) *OneBRC {
+	file, err := os.Open(fileName)
+	if err != nil {
+		panic(err)
+	}
+	scanner := bufio.NewScanner(file)
+	return &OneBRC{
+		file:    file,
+		scanner: scanner,
 	}
 }
 
-func (sm *StationMap) Update(name string, temperature float64) {
-	sm.mutex.Lock()
-	s, ok := sm.m[name]
+func (o *OneBRC) Close() {
+	o.file.Close()
+}
+
+func (o *OneBRC) GetLine() (string, bool, error) {
+	ok := o.scanner.Scan()
 	if ok {
-		sm.mutex.Unlock()
-
-		if temperature < s.Min {
-			s.Min = temperature
-		}
-
-		if temperature > s.Max {
-			s.Max = temperature
-		}
-
-		s.Sum += temperature
-		s.Count++
-	} else {
-		sm.m[name] = &Station{
-			Name:  name,
-			Min:   temperature,
-			Max:   temperature,
-			Sum:   temperature,
-			Count: 1,
-		}
-
-		sm.mutex.Unlock()
+		return o.scanner.Text(), true, nil
 	}
+
+	return "", false, o.scanner.Err()
 }
 
 func processLine(line string) (station string, temperature float64) {
@@ -97,13 +79,64 @@ func printResults(stationsMap map[string]*Station) {
 	fmt.Println(sb.String())
 }
 
-func worker(wg *sync.WaitGroup, input <-chan string, stationsMap *StationMap) {
+func worker(wg *sync.WaitGroup, input <-chan string, stations chan<- Station) {
 	defer wg.Done()
 
 	for line := range input {
 		name, temperature := processLine(line)
-		stationsMap.Update(name, temperature)
+		stations <- Station{
+			Name:  name,
+			Min:   temperature,
+			Max:   temperature,
+			Sum:   temperature,
+			Count: 1,
+		}
 	}
+}
+
+func oneBrc(measurementsFile string) map[string]*Station {
+	o := NewOneBRC(measurementsFile)
+	defer o.Close()
+
+	stationsMap := NewStationMap()
+	linesCh := make(chan string, 1000)
+
+	stationsCh := make(chan Station, 1000)
+	wgWorkers := sync.WaitGroup{}
+	wgWorkers.Add(Workers)
+	for i := 0; i < Workers; i++ {
+		go worker(&wgWorkers, linesCh, stationsCh)
+	}
+
+	wgReducer := sync.WaitGroup{}
+	wgReducer.Add(1)
+	go func() {
+		defer wgReducer.Done()
+		for station := range stationsCh {
+			stationsMap.Update(station)
+		}
+	}()
+
+	// Read the file line by line
+	for {
+		line, ok, err := o.GetLine()
+		if !ok {
+			if err != nil {
+				panic(err)
+			}
+			break
+		}
+
+		linesCh <- line
+	}
+
+	close(linesCh)
+	wgWorkers.Wait()
+
+	close(stationsCh)
+	wgReducer.Wait()
+
+	return stationsMap.m
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -124,39 +157,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	stationsMap := NewStationMap()
+	results := oneBrc(measurementsFile)
 
-	linesCh := make(chan string, Workers*1000)
-
-	wgWorkers := sync.WaitGroup{}
-	wgWorkers.Add(Workers)
-	for i := 0; i < Workers; i++ {
-		go worker(&wgWorkers, linesCh, stationsMap)
-	}
-
-	// Open the file
-	file, err := os.Open(measurementsFile)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-
-	// Create a scanner to read the file
-	scanner := bufio.NewScanner(file)
-
-	// Read the file line by line
-	for scanner.Scan() {
-		linesCh <- scanner.Text()
-	}
-
-	close(linesCh)
-	wgWorkers.Wait()
-
-	// Check for errors
-	if err := scanner.Err(); err != nil {
-		panic(err)
-	}
-
-	printResults(stationsMap.m)
+	printResults(results)
 	fmt.Println("")
 }
