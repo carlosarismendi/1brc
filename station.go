@@ -47,3 +47,18 @@ func (sm *StationMap) Add(name string, temperature float64) {
 		}
 	}
 }
+
+func (sm *StationMap) Merge(smap *StationMap) {
+	for k, v := range smap.m {
+		v := v
+		if s, ok := sm.m[k]; ok {
+			s.Min = min(v.Min, s.Min)
+			s.Max = max(v.Max, s.Max)
+			s.Sum += v.Sum
+			s.Count += v.Count
+			continue
+		}
+
+		sm.m[v.Name] = v
+	}
+}

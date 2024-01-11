@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,52 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"unsafe"
 )
 
 const (
-	Workers = 12
+	Workers = 10
 )
-
-type OneBRC struct {
-	mutex  sync.Mutex
-	file   *os.File
-	reader *bufio.Reader
-}
-
-func NewOneBRC(fileName string) *OneBRC {
-	file, err := os.Open(fileName)
-	if err != nil {
-		panic(err)
-	}
-
-	return &OneBRC{
-		file:   file,
-		reader: bufio.NewReader(file),
-	}
-}
-
-func (o *OneBRC) Close() {
-	o.file.Close()
-}
-
-func (o *OneBRC) GetLine() (string, bool, error) {
-	// o.mutex.Lock()
-	lineBytes, err := o.reader.ReadBytes('\n')
-	// o.mutex.Unlock()
-	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			return "", false, err
-		}
-
-		if len(lineBytes) == 0 {
-			return "", false, nil
-		}
-	}
-
-	s := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes)-1)
-	return s, true, nil
-}
 
 func processLine(line string) (station string, temperature float64) {
 	i := strings.LastIndex(line, ";")
@@ -72,9 +30,8 @@ func processLine(line string) (station string, temperature float64) {
 func printResults(stationsMap map[string]*Station) {
 	stations := make([]*Station, 0, len(stationsMap))
 	for k := range stationsMap {
-		s := stationsMap[k]
-		stations = append(stations, s)
-		delete(stationsMap, s.Name)
+		stations = append(stations, stationsMap[k])
+		delete(stationsMap, k)
 	}
 
 	sort.Slice(stations, func(i, j int) bool {
@@ -92,66 +49,95 @@ func printResults(stationsMap map[string]*Station) {
 	fmt.Println(sb.String())
 }
 
-func worker(wg *sync.WaitGroup, input <-chan string, stations chan<- Station) {
-	defer wg.Done()
+func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
+	stationsMap := NewStationMap()
 
-	for line := range input {
-		name, temperature := processLine(line)
-		stations <- Station{
-			Name:  name,
-			Min:   temperature,
-			Max:   temperature,
-			Sum:   temperature,
-			Count: 1,
+	for {
+		line, ok, err := o.GetLine()
+		if ok {
+			name, temperature := processLine(line)
+			stationsMap.Add(name, temperature)
+			continue
 		}
+
+		if err != nil {
+			panic(err)
+		}
+		break
 	}
+
+	output <- stationsMap
 }
 
 func oneBrc(measurementsFile string) map[string]*Station {
-	o := NewOneBRC(measurementsFile)
-	defer o.Close()
+	var fileSize int64
+	func() {
+		cfr := NewChunkedFileReader(measurementsFile, 0, 10)
+		defer cfr.Close()
 
-	stationsMap := NewStationMap()
-
-	linesCh := make(chan string, Workers*1000)
-	// wg := sync.WaitGroup{}
-	// wg.Add(Workers)
-	// for i := 0; i < Workers; i++ {
-	go func() {
-		// 		defer wg.Done()
-		// Read the file line by line
-		for {
-			line, ok, err := o.GetLine()
-			if ok {
-				linesCh <- line
-				continue
-			}
-
-			close(linesCh)
-			if err != nil {
-				panic(err)
-			}
-			break
+		fileStat, err := cfr.file.Stat()
+		if err != nil {
+			panic(err)
 		}
+
+		fileSize = fileStat.Size()
 	}()
-	// }
 
-	// wg2 := sync.WaitGroup{}
-	// wg2.Add(1)
-	// go func() {
-	// 	defer wg2.Done()
-	for line := range linesCh {
-		line := line
-		name, temperature := processLine(line)
-		stationsMap.Add(name, temperature)
+	chunkSize := fileSize / int64(Workers)
+	if fileSize%2 != 0 {
+		chunkSize++
 	}
-	// }()
 
-	// wg.Wait()
-	// close(linesCh)
+	workerMaps := make(chan *StationMap, Workers)
+	offset := int64(0)
 
-	// wg2.Wait()
-	return stationsMap.m
+	wgWorkers := sync.WaitGroup{}
+	wgWorkers.Add(Workers)
+	for i := 0; i < Workers; i++ {
+		go func(offsetWorker int64) {
+			defer wgWorkers.Done()
+
+			// if i == Workers-1 {
+			// 	chunkSize = fileSize
+			// }
+
+			cfr := NewChunkedFileReader(measurementsFile, uint64(offsetWorker), uint64(chunkSize))
+			defer cfr.Close()
+
+			// Set the offset at the beginning of the next line
+			if offset != 0 {
+				_, err := cfr.reader.ReadBytes('\n')
+				if err != nil && !errors.Is(err, io.EOF) {
+					panic(err)
+				}
+			}
+
+			workerOneBrc(cfr, workerMaps)
+		}(offset)
+
+		offset += chunkSize
+	}
+
+	var stationsMap map[string]*Station
+
+	wgReducer := sync.WaitGroup{}
+	wgReducer.Add(1)
+	go func() {
+		defer wgReducer.Done()
+
+		sm := <-workerMaps
+		for wsm := range workerMaps {
+			sm.Merge(wsm)
+		}
+
+		stationsMap = sm.m
+	}()
+
+	wgWorkers.Wait()
+	close(workerMaps)
+
+	wgReducer.Wait()
+	return stationsMap
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
