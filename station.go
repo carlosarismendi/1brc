@@ -1,13 +1,21 @@
 package main
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 type Station struct {
 	Name  string
 	Min   float64
 	Max   float64
 	Sum   float64
-	Count int
+	Count int64
+}
+
+func (s Station) String() string {
+	mean := round(s.Sum / float64(s.Count))
+	return fmt.Sprintf("%s=%.1f/%.1f/%.1f", s.Name, round(s.Min), mean, round(s.Max))
 }
 
 type StationMap struct {
@@ -22,9 +30,6 @@ func NewStationMap() *StationMap {
 }
 
 func (sm *StationMap) Add(name string, temperature float64) {
-	// sm.mutex.Lock()
-	// defer sm.mutex.Unlock()
-
 	s, ok := sm.m[name]
 	if ok {
 		if temperature < s.Min {

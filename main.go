@@ -3,57 +3,16 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"log"
-	"math"
 	"os"
 	"runtime/pprof"
-	"sort"
-	"strconv"
-	"strings"
 	"sync"
 )
 
 const (
 	Workers = 1
 )
-
-func processLine(line string) (station string, temperature float64) {
-	i := strings.LastIndex(line, ";")
-	temp, err := strconv.ParseFloat(line[i+1:], 64)
-	if err != nil {
-		panic(fmt.Errorf("Error parsing temperature for line %q. Error=%q.", line, err.Error()))
-	}
-	return line[:i], temp
-}
-
-func roundFloat(f float64) float64 {
-	const ratio = 10
-	return math.Round(f*ratio) / ratio
-}
-
-func printResults(stationsMap map[string]*Station) {
-	stations := make([]*Station, 0, len(stationsMap))
-	for k := range stationsMap {
-		stations = append(stations, stationsMap[k])
-		delete(stationsMap, k)
-	}
-
-	sort.Slice(stations, func(i, j int) bool {
-		return stations[i].Name < stations[j].Name
-	})
-
-	var sb strings.Builder
-	sb.WriteString("{")
-	sep := ""
-	for _, v := range stations {
-		sb.WriteString(fmt.Sprintf("%s%s=%.1f/%.1f/%.1f", sep, v.Name, v.Min, roundFloat(v.Sum)/float64(v.Count), v.Max))
-		sep = ", "
-	}
-	sb.WriteString("}")
-	fmt.Println(sb.String())
-}
 
 func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
 	stationsMap := NewStationMap()
@@ -171,5 +130,4 @@ func main() {
 	results := oneBrc(measurementsFile)
 
 	printResults(results)
-	fmt.Println("")
 }
