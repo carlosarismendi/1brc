@@ -1,50 +1,146 @@
 package main
 
 import (
-	"bufio"
+	"errors"
+	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-type Station struct {
-	Name  string
-	Min   float64
-	Max   float64
-	Sum   float64
-	Count int
-}
+const (
+	Workers = 10
+)
 
 func processLine(line string) (station string, temperature float64) {
-	v := strings.Split(line, ";")
-	temperature, err := strconv.ParseFloat(v[1], 64)
+	i := strings.LastIndex(line, ";")
+	temp, err := strconv.ParseFloat(line[i+1:], 64)
 	if err != nil {
 		panic(fmt.Errorf("Error parsing temperature for line %q. Error=%q.", line, err.Error()))
 	}
-	return v[0], temperature
+	return line[:i], temp
 }
 
 func printResults(stationsMap map[string]*Station) {
 	stations := make([]*Station, 0, len(stationsMap))
-	for _, v := range stationsMap {
-		stations = append(stations, v)
-		delete(stationsMap, v.Name)
+	for k := range stationsMap {
+		stations = append(stations, stationsMap[k])
+		delete(stationsMap, k)
 	}
 
 	sort.Slice(stations, func(i, j int) bool {
 		return stations[i].Name < stations[j].Name
 	})
 
-	fmt.Print("{")
+	var sb strings.Builder
+	sb.WriteString("{")
 	sep := ""
 	for _, v := range stations {
-		fmt.Printf("%s%s=%.1f/%.1f/%.1f", sep, v.Name, v.Min, ((10*v.Sum)/float64(v.Count))/10, v.Max)
+		sb.WriteString(fmt.Sprintf("%s%s=%.1f/%.1f/%.1f", sep, v.Name, v.Min, ((10*v.Sum)/float64(v.Count))/10, v.Max))
 		sep = ", "
 	}
-	fmt.Print("}\n")
+	sb.WriteString("}")
+	fmt.Println(sb.String())
 }
+
+func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
+	stationsMap := NewStationMap()
+
+	for {
+		line, ok, err := o.GetLine()
+		if ok {
+			name, temperature := processLine(line)
+			stationsMap.Add(name, temperature)
+			continue
+		}
+
+		if err != nil {
+			panic(err)
+		}
+		break
+	}
+
+	output <- stationsMap
+}
+
+func oneBrc(measurementsFile string) map[string]*Station {
+	var fileSize int64
+	func() {
+		cfr := NewChunkedFileReader(measurementsFile, 0, 10)
+		defer cfr.Close()
+
+		fileStat, err := cfr.file.Stat()
+		if err != nil {
+			panic(err)
+		}
+
+		fileSize = fileStat.Size()
+	}()
+
+	chunkSize := fileSize / int64(Workers)
+	if fileSize%2 != 0 {
+		chunkSize++
+	}
+
+	workerMaps := make(chan *StationMap, Workers)
+	offset := int64(0)
+
+	wgWorkers := sync.WaitGroup{}
+	wgWorkers.Add(Workers)
+	for i := 0; i < Workers; i++ {
+		go func(offsetWorker int64) {
+			defer wgWorkers.Done()
+
+			// if i == Workers-1 {
+			// 	chunkSize = fileSize
+			// }
+
+			cfr := NewChunkedFileReader(measurementsFile, uint64(offsetWorker), uint64(chunkSize))
+			defer cfr.Close()
+
+			// Set the offset at the beginning of the next line
+			if offset != 0 {
+				_, err := cfr.reader.ReadBytes('\n')
+				if err != nil && !errors.Is(err, io.EOF) {
+					panic(err)
+				}
+			}
+
+			workerOneBrc(cfr, workerMaps)
+		}(offset)
+
+		offset += chunkSize
+	}
+
+	var stationsMap map[string]*Station
+
+	wgReducer := sync.WaitGroup{}
+	wgReducer.Add(1)
+	go func() {
+		defer wgReducer.Done()
+
+		sm := <-workerMaps
+		for wsm := range workerMaps {
+			sm.Merge(wsm)
+		}
+
+		stationsMap = sm.m
+	}()
+
+	wgWorkers.Wait()
+	close(workerMaps)
+
+	wgReducer.Wait()
+	return stationsMap
+}
+
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 
 func main() {
 	measurementsFile := os.Getenv("MEASUREMENTS_FILE")
@@ -52,38 +148,18 @@ func main() {
 		panic("MEASUREMENTS_FILE environment variable not set")
 	}
 
-	// Open the file
-	file, err := os.Open(measurementsFile)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-
-	// Create a scanner to read the file
-	scanner := bufio.NewScanner(file)
-
-	stationsMap := make(map[string]*Station)
-
-	// Read the file line by line
-	for scanner.Scan() {
-		// Print the line
-		line := scanner.Text()
-		stationName, temperature := processLine(line)
-		s, ok := stationsMap[stationName]
-		if ok {
-			s.Min = min(s.Min, temperature)
-			s.Max = max(s.Max, temperature)
-			s.Sum += temperature
-			s.Count++
-			continue
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
 		}
-		stationsMap[stationName] = &Station{Name: stationName, Min: temperature, Max: temperature, Sum: temperature, Count: 1}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
-	// Check for errors
-	if err := scanner.Err(); err != nil {
-		panic(err)
-	}
+	results := oneBrc(measurementsFile)
 
-	printResults(stationsMap)
+	printResults(results)
+	fmt.Println("")
 }
