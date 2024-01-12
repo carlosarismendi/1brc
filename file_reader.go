@@ -44,13 +44,12 @@ func (o *ChunkedFileReader) Close() {
 }
 
 func (o *ChunkedFileReader) GetLine() (string, bool, error) {
-	if o.bytesRead > o.maxReadBytes {
+	if o.bytesRead >= o.maxReadBytes {
 		return "", false, nil
 	}
 
-	// o.mutex.Lock()
 	lineBytes, err := o.reader.ReadBytes('\n')
-	// o.mutex.Unlock()
+
 	if err != nil {
 		if !errors.Is(err, io.EOF) {
 			return "", false, err

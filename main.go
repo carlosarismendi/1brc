@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	Workers = 10
+	Workers = 1
 )
 
 func processLine(line string) (station string, temperature float64) {
@@ -84,9 +84,6 @@ func oneBrc(measurementsFile string) map[string]*Station {
 	}()
 
 	chunkSize := fileSize / int64(Workers)
-	if fileSize%2 != 0 {
-		chunkSize++
-	}
 
 	workerMaps := make(chan *StationMap, Workers)
 	offset := int64(0)
@@ -97,15 +94,15 @@ func oneBrc(measurementsFile string) map[string]*Station {
 		go func(offsetWorker int64) {
 			defer wgWorkers.Done()
 
-			// if i == Workers-1 {
-			// 	chunkSize = fileSize
-			// }
+			if i == Workers-1 {
+				chunkSize = fileSize
+			}
 
 			cfr := NewChunkedFileReader(measurementsFile, uint64(offsetWorker), uint64(chunkSize))
 			defer cfr.Close()
 
 			// Set the offset at the beginning of the next line
-			if offset != 0 {
+			if offsetWorker != 0 {
 				_, err := cfr.reader.ReadBytes('\n')
 				if err != nil && !errors.Is(err, io.EOF) {
 					panic(err)
