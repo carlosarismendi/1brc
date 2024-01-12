@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"runtime/pprof"
 	"sort"
@@ -27,6 +28,11 @@ func processLine(line string) (station string, temperature float64) {
 	return line[:i], temp
 }
 
+func roundFloat(f float64) float64 {
+	const ratio = 10
+	return math.Round(f*ratio) / ratio
+}
+
 func printResults(stationsMap map[string]*Station) {
 	stations := make([]*Station, 0, len(stationsMap))
 	for k := range stationsMap {
@@ -42,7 +48,7 @@ func printResults(stationsMap map[string]*Station) {
 	sb.WriteString("{")
 	sep := ""
 	for _, v := range stations {
-		sb.WriteString(fmt.Sprintf("%s%s=%.1f/%.1f/%.1f", sep, v.Name, v.Min, ((10*v.Sum)/float64(v.Count))/10, v.Max))
+		sb.WriteString(fmt.Sprintf("%s%s=%.1f/%.1f/%.1f", sep, v.Name, v.Min, roundFloat(v.Sum)/float64(v.Count), v.Max))
 		sep = ", "
 	}
 	sb.WriteString("}")
@@ -84,39 +90,46 @@ func oneBrc(measurementsFile string) map[string]*Station {
 	}()
 
 	chunkSize := fileSize / int64(Workers)
+	// log.Printf("File size: %v, chunk size: %v\n", fileSize, chunkSize)
 
 	workerMaps := make(chan *StationMap, Workers)
-	offset := int64(0)
-
 	wgWorkers := sync.WaitGroup{}
 	wgWorkers.Add(Workers)
-	for i := 0; i < Workers; i++ {
-		go func(offsetWorker int64) {
+
+	left := fileSize - chunkSize
+
+	right := fileSize
+	for i := Workers; i > 0; i-- {
+		if i == 1 {
+			left = 0
+			// log.Printf("(left, right)=(%v, %v)\n", left, right)
+		}
+		cfr := NewChunkedFileReader(measurementsFile, uint64(left), uint64(right))
+
+		// Set the offset at the beginning of the next line
+		var diff int64
+		if left > 0 {
+			b, err := cfr.reader.ReadBytes('\n')
+			if err != nil && !errors.Is(err, io.EOF) {
+				panic(err)
+			}
+
+			diff = int64(len(b))
+			// log.Printf("(left, right)=(%v, %v)\n", left+diff, right)
+		}
+
+		go func(workerCfr *ChunkedFileReader) {
+			defer workerCfr.Close()
 			defer wgWorkers.Done()
 
-			if i == Workers-1 {
-				chunkSize = fileSize
-			}
+			workerOneBrc(workerCfr, workerMaps)
+		}(cfr)
 
-			cfr := NewChunkedFileReader(measurementsFile, uint64(offsetWorker), uint64(chunkSize))
-			defer cfr.Close()
-
-			// Set the offset at the beginning of the next line
-			if offsetWorker != 0 {
-				_, err := cfr.reader.ReadBytes('\n')
-				if err != nil && !errors.Is(err, io.EOF) {
-					panic(err)
-				}
-			}
-
-			workerOneBrc(cfr, workerMaps)
-		}(offset)
-
-		offset += chunkSize
+		right = left + diff
+		left = left - chunkSize
 	}
 
 	var stationsMap map[string]*Station
-
 	wgReducer := sync.WaitGroup{}
 	wgReducer.Add(1)
 	go func() {
