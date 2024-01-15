@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -22,24 +21,13 @@ func round(f float64) float64 {
 	return math.Round(f*ratio) / ratio
 }
 
-func printResults(stationsMap map[string]*Station) {
-	stations := make([]*Station, 0, len(stationsMap))
-	for k := range stationsMap {
-		stations = append(stations, stationsMap[k])
-		delete(stationsMap, k)
-	}
-
-	sort.Slice(stations, func(i, j int) bool {
-		return stations[i].Name < stations[j].Name
-	})
+func printResults(stationsMap *StationMap) {
 
 	var sb strings.Builder
 	sb.WriteString("{")
-	sep := ""
-	for _, v := range stations {
-		sb.WriteString(fmt.Sprintf("%s%s", sep, v.String()))
-		sep = ", "
-	}
+
+	sb.WriteString(stationsMap.String())
+
 	sb.WriteString("}")
 	fmt.Println(sb.String())
 }

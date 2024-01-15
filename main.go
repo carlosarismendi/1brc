@@ -28,7 +28,7 @@ func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
 	output <- stationsMap
 }
 
-func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station {
+func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 	var fileSize int64
 	func() {
 		cfr := NewChunkedFileReader(measurementsFile, 0, 10)
@@ -82,7 +82,7 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station
 		left = left - chunkSize
 	}
 
-	var stationsMap map[string]*Station
+	var stationsMap *StationMap
 	wgReducer := sync.WaitGroup{}
 	wgReducer.Add(1)
 	go func() {
@@ -93,7 +93,7 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station
 			sm.Merge(wsm)
 		}
 
-		stationsMap = sm.m
+		stationsMap = sm
 	}()
 
 	wgWorkers.Wait()
