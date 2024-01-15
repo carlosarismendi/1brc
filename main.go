@@ -10,10 +10,6 @@ import (
 	"sync"
 )
 
-const (
-	Workers = 1
-)
-
 func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
 	stationsMap := NewStationMap()
 
@@ -34,7 +30,7 @@ func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
 	output <- stationsMap
 }
 
-func oneBrc(measurementsFile string) map[string]*Station {
+func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station {
 	var fileSize int64
 	func() {
 		cfr := NewChunkedFileReader(measurementsFile, 0, 10)
@@ -48,17 +44,17 @@ func oneBrc(measurementsFile string) map[string]*Station {
 		fileSize = fileStat.Size()
 	}()
 
-	chunkSize := fileSize / int64(Workers)
+	chunkSize := fileSize / int64(maxWorkers)
 	// log.Printf("File size: %v, chunk size: %v\n", fileSize, chunkSize)
 
-	workerMaps := make(chan *StationMap, Workers)
+	workerMaps := make(chan *StationMap, maxWorkers)
 	wgWorkers := sync.WaitGroup{}
-	wgWorkers.Add(Workers)
+	wgWorkers.Add(maxWorkers)
 
 	left := fileSize - chunkSize
 
 	right := fileSize
-	for i := Workers; i > 0; i-- {
+	for i := maxWorkers; i > 0; i-- {
 		if i == 1 {
 			left = 0
 			// log.Printf("(left, right)=(%v, %v)\n", left, right)
@@ -110,13 +106,11 @@ func oneBrc(measurementsFile string) map[string]*Station {
 }
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var measurementsFile = flag.String("measurements-file", "measurements.txt", "measurements file")
+var maxRam = flag.Int("max-ram", 2, "max ram to use (GB)")
+var maxWorkers = flag.Int("max-workers", 1, "max workers to use")
 
 func main() {
-	measurementsFile := os.Getenv("MEASUREMENTS_FILE")
-	if measurementsFile == "" {
-		panic("MEASUREMENTS_FILE environment variable not set")
-	}
-
 	flag.Parse()
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -127,7 +121,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	results := oneBrc(measurementsFile)
+	results := oneBrc(*measurementsFile, *maxWorkers, *maxRam)
 
 	printResults(results)
 }

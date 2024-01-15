@@ -1,2 +1,4 @@
-*.txt
+*.txt*
+*.prof*
+*measurements
 1brc
