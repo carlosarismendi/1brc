@@ -107,7 +107,7 @@ Kyoto;10.8
 Odesa;20.0
 Accra;27.0
 Mahajanga;32.6
-Nouadhibou;34.4
+Nouadhibou;34.3
 Darwin;33.4
 Khartoum;47.5
 Mzuzu;9.1

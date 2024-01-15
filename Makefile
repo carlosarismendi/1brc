@@ -11,7 +11,7 @@ MEASUREMENTS_FILE=$(MEASUREMENTS_FOLDER)/measurements_$(AMOUNT).txt
 ACTUAL_RESULTS_FILE=$(MEASUREMENTS_FOLDER)/actual_results_$(AMOUNT).txt
 EXPECTED_RESULTS_FILE=$(MEASUREMENTS_FOLDER)/expected_results_$(AMOUNT).txt
 
-ARGS=-measurements-file=$(MEASUREMENTS_FILE) -max-workers=32 -max-ram=4
+ARGS=-measurements-file=$(MEASUREMENTS_FILE) -max-workers=1024 -max-ram=8
 
 .PHONY: build
 build: clean
@@ -19,7 +19,7 @@ build: clean
 
 .PHONY: time
 time: build	
-	/usr/bin/time -v ./$(BIN_FILE) $(ARGS)
+	hyperfine --warmup 1 './$(BIN_FILE) $(ARGS)'
 
 .PHONY: run
 run: build
