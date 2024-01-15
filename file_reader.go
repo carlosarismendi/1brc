@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"sync"
-	"unsafe"
 )
 
 type ChunkedFileReader struct {
@@ -75,9 +74,9 @@ func (o *ChunkedFileReader) MMap() error {
 	return nil
 }
 
-func (o *ChunkedFileReader) GetLine() (string, bool, error) {
+func (o *ChunkedFileReader) GetLine() ([]byte, bool, error) {
 	if len(o.text) == 0 {
-		return "", false, nil
+		return nil, false, nil
 	}
 
 	idx := bytes.IndexByte(o.text, byte('\n'))
@@ -92,9 +91,8 @@ func (o *ChunkedFileReader) GetLine() (string, bool, error) {
 	}
 
 	if len(lineBytes) == 0 {
-		return "", false, nil
+		return nil, false, nil
 	}
 
-	s := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes))
-	return s, true, nil
+	return lineBytes, true, nil
 }

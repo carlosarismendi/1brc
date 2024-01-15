@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"unsafe"
 )
 
 type Station struct {
@@ -35,9 +34,8 @@ func NewStationMap() *StationMap {
 	}
 }
 
-func (sm *StationMap) Add(name string, temperature float64) {
-	b := unsafe.Slice(unsafe.StringData(name), len(name))
-	n := maphash.Bytes(seed, b)
+func (sm *StationMap) Add(name string, nameBytes []byte, temperature float64) {
+	n := maphash.Bytes(seed, nameBytes)
 
 	if s, ok := sm.m[n]; ok {
 		if temperature < s.Min {

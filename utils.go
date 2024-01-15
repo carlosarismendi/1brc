@@ -1,19 +1,28 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"unsafe"
 )
 
-func processLine(line string) (station string, temperature float64) {
-	i := strings.LastIndex(line, ";")
-	temp, err := strconv.ParseFloat(line[i+1:], 64)
+func processLine(lineBytes []byte) (station string, nameBytes []byte, temperature float64) {
+	// line := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes))
+	sep := bytes.LastIndexByte(lineBytes, ';')
+
+	tempBytes := lineBytes[sep+1:]
+	tempBytesStr := unsafe.String(unsafe.SliceData(tempBytes), len(tempBytes))
+	temp, err := strconv.ParseFloat(tempBytesStr, 64)
 	if err != nil {
-		panic(fmt.Errorf("Error parsing temperature for line %q. Error=%q.", line, err.Error()))
+		panic(fmt.Errorf("Error parsing temperature for line %q. Error=%q.", string(lineBytes), err.Error()))
 	}
-	return line[:i], temp
+
+	nameBytes = lineBytes[:sep]
+	name := unsafe.String(unsafe.SliceData(nameBytes), len(nameBytes))
+	return name, nameBytes, temp
 }
 
 func round(f float64) float64 {
@@ -22,7 +31,6 @@ func round(f float64) float64 {
 }
 
 func printResults(stationsMap *StationMap) {
-
 	var sb strings.Builder
 	sb.WriteString("{")
 
