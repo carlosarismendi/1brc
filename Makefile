@@ -11,7 +11,7 @@ MEASUREMENTS_FILE=$(MEASUREMENTS_FOLDER)/measurements_$(AMOUNT).txt
 ACTUAL_RESULTS_FILE=$(MEASUREMENTS_FOLDER)/actual_results_$(AMOUNT).txt
 EXPECTED_RESULTS_FILE=$(MEASUREMENTS_FOLDER)/expected_results_$(AMOUNT).txt
 
-ARGS=-measurements-file=$(MEASUREMENTS_FILE) -max-workers=2 -max-ram=6
+ARGS=-measurements-file=$(MEASUREMENTS_FILE) -max-workers=8 -max-ram=6
 
 .PHONY: build
 build: clean
@@ -40,4 +40,4 @@ test: clean run
 
 .PHONY: clean
 clean:
-	rm -rf $(ACTUAL_RESULTS_FILE) $(BIN_FILE)
+	rm -rf $(MEASUREMENTS_FOLDER)/actual* $(BIN_FILE)

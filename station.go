@@ -14,7 +14,7 @@ type Station struct {
 }
 
 func (s Station) String() string {
-	mean := round(s.Sum / float64(s.Count))
+	mean := s.Sum / float64(s.Count)
 	return fmt.Sprintf("%s=%.1f/%.1f/%.1f", s.Name, round(s.Min), mean, round(s.Max))
 }
 

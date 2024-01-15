@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
-	"log"
 	"os"
 	"sync"
 	"unsafe"
@@ -46,12 +46,25 @@ func (o *ChunkedFileReader) Close() {
 	o.file.Close()
 }
 
+func (o *ChunkedFileReader) MoveReaderToStartOfNextLine() (bytesJumped int, rErr error) {
+	b, err := o.reader.ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return 0, err
+	}
+
+	o.offset += uint64(len(b))
+	o.text = o.text[len(b):]
+	return len(b), nil
+}
+
 func (o *ChunkedFileReader) MMap() error {
 	n, err := io.ReadFull(o.reader, o.text)
 	// n, err := o.reader.Read(o.text)
-	// log.Printf("Offset: %v | MaxBytes: %v, BytesRead: %v, len(o.text): %v, | Text: \n%v\n",
+	// log.Printf("Offset: %v | MaxBytes: %v, BytesRead: %v, len(o.text): %v"+
+	// 	", | Text: \n%v\n",
+	// 	// "",
 	// 	o.offset, o.maxBytes, n, len(o.text),
-	// 	string(o.text),
+	// 	string(o.text[len(o.text)-20:]),
 	// )
 
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
@@ -71,16 +84,17 @@ func (o *ChunkedFileReader) GetLine() (string, bool, error) {
 	var lineBytes []byte
 	if idx > 0 {
 		lineBytes = o.text[:idx]
+		o.text = o.text[idx+1:]
+		// log.Println(string(lineBytes))
 	} else {
-		log.Println(string(o.text))
 		lineBytes = o.text
+		o.text = nil
 	}
 
 	if len(lineBytes) == 0 {
 		return "", false, nil
 	}
 
-	o.text = o.text[idx+1:]
 	s := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes))
 	return s, true, nil
 }

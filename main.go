@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"flag"
-	"io"
 	"log"
 	"os"
 	"runtime/pprof"
@@ -62,12 +60,11 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station
 		// Set the offset at the beginning of the next line
 		var diff int64
 		if left > 0 {
-			b, err := cfr.reader.ReadBytes('\n')
-			if err != nil && !errors.Is(err, io.EOF) {
+			n, err := cfr.MoveReaderToStartOfNextLine()
+			if err != nil {
 				panic(err)
 			}
-
-			diff = int64(len(b))
+			diff = int64(n)
 		}
 
 		go func(workerCfr *ChunkedFileReader) {
