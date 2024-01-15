@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"runtime/debug"
 	"runtime/pprof"
 	"sync"
 )
@@ -42,46 +43,15 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 		fileSize = fileStat.Size()
 	}()
 
-	chunkSize := fileSize / int64(maxWorkers)
-
-	workerMaps := make(chan *StationMap, maxWorkers)
-	wgWorkers := sync.WaitGroup{}
-	wgWorkers.Add(maxWorkers)
-
-	left := fileSize - chunkSize
-
-	right := fileSize
-	for i := maxWorkers; i > 0; i-- {
-		if i == 1 {
-			left = 0
-		}
-		cfr := NewChunkedFileReader(measurementsFile, uint64(left), uint64(right))
-
-		// Set the offset at the beginning of the next line
-		var diff int64
-		if left > 0 {
-			n, err := cfr.MoveReaderToStartOfNextLine()
-			if err != nil {
-				panic(err)
-			}
-			diff = int64(n)
-		}
-
-		go func(workerCfr *ChunkedFileReader) {
-			defer workerCfr.Close()
-			defer wgWorkers.Done()
-
-			err := workerCfr.MMap()
-			if err != nil {
-				panic(err)
-			}
-			workerOneBrc(workerCfr, workerMaps)
-		}(cfr)
-
-		right = left + diff
-		left = left - chunkSize
+	var chunkSize int64
+	if fileSize <= int64(maxRam) {
+		chunkSize = fileSize / int64(maxWorkers)
+	} else {
+		chunkSize = int64(maxRam / maxWorkers)
 	}
 
+	// log.Printf("workers=%v, chunk=%v, ram=%v, fileSize=%v", maxWorkers, chunkSize, maxRam, fileSize)
+	workerMaps := make(chan *StationMap, maxWorkers)
 	var stationsMap *StationMap
 	wgReducer := sync.WaitGroup{}
 	wgReducer.Add(1)
@@ -96,12 +66,57 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 		stationsMap = sm
 	}()
 
+	wgWorkers := sync.WaitGroup{}
+
+	sem := NewSemaphore(maxWorkers)
+
+	left := fileSize - chunkSize
+	right := fileSize
+	quit := false
+	for !quit {
+		// log.Printf("left: %v, right: %v\n", left, right)
+		if left < 0 {
+			left = 0
+			quit = true
+		}
+		cfr := NewChunkedFileReader(measurementsFile, uint64(left), uint64(right))
+
+		// Set the offset at the beginning of the next line
+		var diff int64
+		if left > 0 {
+			n, err := cfr.MoveReaderToStartOfNextLine()
+			if err != nil {
+				panic(err)
+			}
+			diff = int64(n)
+		}
+
+		sem.Acquire()
+		wgWorkers.Add(1)
+		go func(workerCfr *ChunkedFileReader) {
+			defer workerCfr.Close()
+			defer wgWorkers.Done()
+			defer sem.Release()
+
+			err := workerCfr.MMap()
+			if err != nil {
+				panic(err)
+			}
+			workerOneBrc(workerCfr, workerMaps)
+		}(cfr)
+
+		right = left + diff
+		left = left - chunkSize
+	}
+
 	wgWorkers.Wait()
 	close(workerMaps)
 
 	wgReducer.Wait()
 	return stationsMap
 }
+
+const GB = 1024 * 1024 * 1024
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 var measurementsFile = flag.String("measurements-file", "measurements.txt", "measurements file")
@@ -120,7 +135,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	results := oneBrc(*measurementsFile, *maxWorkers, *maxRam)
+	debug.SetMemoryLimit(int64(*maxRam * GB))
+	results := oneBrc(*measurementsFile, *maxWorkers, *maxRam*GB)
 
 	printResults(results)
 }

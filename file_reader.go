@@ -43,6 +43,8 @@ func NewChunkedFileReader(fileName string, offset, maxReadBytes uint64) *Chunked
 
 func (o *ChunkedFileReader) Close() {
 	o.file.Close()
+	// runtime.GC()
+	// debug.FreeOSMemory()
 }
 
 func (o *ChunkedFileReader) MoveReaderToStartOfNextLine() (bytesJumped int, rErr error) {
@@ -66,7 +68,7 @@ func (o *ChunkedFileReader) MMap() error {
 	// 	string(o.text[len(o.text)-20:]),
 	// )
 
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+	if err != nil && err != io.ErrUnexpectedEOF {
 		return err
 	}
 
