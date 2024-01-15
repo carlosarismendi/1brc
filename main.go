@@ -45,7 +45,6 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station
 	}()
 
 	chunkSize := fileSize / int64(maxWorkers)
-	// log.Printf("File size: %v, chunk size: %v\n", fileSize, chunkSize)
 
 	workerMaps := make(chan *StationMap, maxWorkers)
 	wgWorkers := sync.WaitGroup{}
@@ -57,7 +56,6 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station
 	for i := maxWorkers; i > 0; i-- {
 		if i == 1 {
 			left = 0
-			// log.Printf("(left, right)=(%v, %v)\n", left, right)
 		}
 		cfr := NewChunkedFileReader(measurementsFile, uint64(left), uint64(right))
 
@@ -70,13 +68,16 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) map[string]*Station
 			}
 
 			diff = int64(len(b))
-			// log.Printf("(left, right)=(%v, %v)\n", left+diff, right)
 		}
 
 		go func(workerCfr *ChunkedFileReader) {
 			defer workerCfr.Close()
 			defer wgWorkers.Done()
 
+			err := workerCfr.MMap()
+			if err != nil {
+				panic(err)
+			}
 			workerOneBrc(workerCfr, workerMaps)
 		}(cfr)
 
@@ -112,6 +113,7 @@ var maxWorkers = flag.Int("max-workers", 1, "max workers to use")
 
 func main() {
 	flag.Parse()
+	// log.Printf("file: %v, ram: %v, workers: %v\n", *measurementsFile, *maxRam, *maxWorkers)
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {

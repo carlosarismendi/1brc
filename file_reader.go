@@ -2,8 +2,9 @@ package main
 
 import (
 	"bufio"
-	"errors"
+	"bytes"
 	"io"
+	"log"
 	"os"
 	"sync"
 	"unsafe"
@@ -14,8 +15,9 @@ type ChunkedFileReader struct {
 	file   *os.File
 	reader *bufio.Reader
 
-	maxReadBytes int64
-	bytesRead    int64
+	offset   uint64
+	maxBytes uint64
+	text     []byte
 }
 
 func NewChunkedFileReader(fileName string, offset, maxReadBytes uint64) *ChunkedFileReader {
@@ -32,10 +34,11 @@ func NewChunkedFileReader(fileName string, offset, maxReadBytes uint64) *Chunked
 	}
 
 	return &ChunkedFileReader{
-		file:         file,
-		reader:       bufio.NewReader(file),
-		maxReadBytes: int64(maxReadBytes),
-		bytesRead:    0,
+		file:     file,
+		reader:   bufio.NewReader(file),
+		offset:   offset,
+		maxBytes: maxReadBytes,
+		text:     make([]byte, maxReadBytes-offset),
 	}
 }
 
@@ -43,24 +46,41 @@ func (o *ChunkedFileReader) Close() {
 	o.file.Close()
 }
 
+func (o *ChunkedFileReader) MMap() error {
+	n, err := io.ReadFull(o.reader, o.text)
+	// n, err := o.reader.Read(o.text)
+	// log.Printf("Offset: %v | MaxBytes: %v, BytesRead: %v, len(o.text): %v, | Text: \n%v\n",
+	// 	o.offset, o.maxBytes, n, len(o.text),
+	// 	string(o.text),
+	// )
+
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return err
+	}
+
+	o.text = o.text[:n]
+	return nil
+}
+
 func (o *ChunkedFileReader) GetLine() (string, bool, error) {
-	if o.bytesRead >= o.maxReadBytes {
+	if len(o.text) == 0 {
 		return "", false, nil
 	}
 
-	lineBytes, err := o.reader.ReadBytes('\n')
-
-	if err != nil {
-		if !errors.Is(err, io.EOF) {
-			return "", false, err
-		}
-
-		if len(lineBytes) == 0 {
-			return "", false, nil
-		}
+	idx := bytes.IndexByte(o.text, byte('\n'))
+	var lineBytes []byte
+	if idx > 0 {
+		lineBytes = o.text[:idx]
+	} else {
+		log.Println(string(o.text))
+		lineBytes = o.text
 	}
 
-	o.bytesRead += int64(len(lineBytes))
-	s := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes)-1)
+	if len(lineBytes) == 0 {
+		return "", false, nil
+	}
+
+	o.text = o.text[idx+1:]
+	s := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes))
 	return s, true, nil
 }
