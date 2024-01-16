@@ -1,51 +1,43 @@
 package main
 
 import (
-	"hash/maphash"
+	"strconv"
 	"testing"
 
-	"unsafe"
+	"github.com/stretchr/testify/assert"
 )
 
 func BenchmarkMapAccess(b *testing.B) {
-
-	seed := maphash.MakeSeed()
-
-	b.Run("map[uint64]*Station", func(b *testing.B) {
-		line := "line"
-		m := make(map[uint64]*Station)
+	arr := []string{"1.1", "22.0", "33.8", "-4.0", "-85.7"}
+	b.Run("strconv.ParseFloat", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			b := unsafe.Slice(unsafe.StringData(line), len(line))
-			n := maphash.Bytes(seed, b)
-
-			m[n] = &Station{}
-
-			line += "1"
-			if i%100 == 0 {
-				line = "line"
+			for _, v := range arr {
+				n, _ := strconv.ParseFloat(string(v), 64)
+				n = n
 			}
 		}
 	})
 
-	b.Run("4*map[uint64]int", func(b *testing.B) {
-		line := "line"
-
-		m1 := make(map[uint64]int)
-		m2 := make(map[uint64]int)
-		m3 := make(map[uint64]int)
-		m4 := make(map[uint64]int)
+	arr2 := [][]byte{[]byte("1.1"), []byte("22.0"), []byte("33.8"), []byte("-4.0"), []byte("-85.7")}
+	b.Run("parseFloat", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			b := unsafe.Slice(unsafe.StringData(line), len(line))
-			n := maphash.Bytes(seed, b)
-
-			m1[n] = min(m1[n], i)
-			m2[n] = max(m2[n], i)
-			m3[n]++
-			m4[n]++
-
-			if i%100 == 0 {
-				line = "line"
+			for _, v := range arr2 {
+				n := parseFloat(v)
+				n = n
 			}
 		}
 	})
+}
+
+func TestParseFloat(t *testing.T) {
+	tests := [][]byte{[]byte("1.1"), []byte("22.0"), []byte("33.8"), []byte("-4.0"), []byte("-85.7")}
+	expected := []float64{1.1, 22.0, 33.8, -4.0, -85.7}
+
+	for i := range tests {
+		v := tests[i]
+		t.Run(string(v), func(t *testing.T) {
+			n := parseFloat(v)
+			assert.Equal(t, expected[i], n)
+		})
+	}
 }

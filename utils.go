@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"unsafe"
 )
@@ -14,15 +13,36 @@ func processLine(lineBytes []byte) (station string, nameBytes []byte, temperatur
 	sep := bytes.LastIndexByte(lineBytes, ';')
 
 	tempBytes := lineBytes[sep+1:]
-	tempBytesStr := unsafe.String(unsafe.SliceData(tempBytes), len(tempBytes))
-	temp, err := strconv.ParseFloat(tempBytesStr, 64)
-	if err != nil {
-		panic(fmt.Errorf("Error parsing temperature for line %q. Error=%q.", string(lineBytes), err.Error()))
-	}
+	temp := parseFloat(tempBytes)
 
 	nameBytes = lineBytes[:sep]
 	name := unsafe.String(unsafe.SliceData(nameBytes), len(nameBytes))
 	return name, nameBytes, temp
+}
+
+func parseFloat(s []byte) float64 {
+	idx := 0
+	sign := int64(1)
+	if s[0] == '-' {
+		sign = -1
+		idx = 1
+	}
+
+	num := int64(0)
+	for ; idx < len(s); idx++ {
+		if s[idx] == '.' {
+			idx++
+			break
+		}
+
+		num = num*10 + int64(s[idx]-'0')
+	}
+
+	for ; idx < len(s); idx++ {
+		num = num*10 + int64(s[idx]-'0')
+	}
+
+	return float64(sign*num) / 10.0
 }
 
 func round(f float64) float64 {

@@ -5,7 +5,6 @@ import (
 	"hash/maphash"
 	"sort"
 	"strings"
-	"sync"
 )
 
 type Station struct {
@@ -13,7 +12,7 @@ type Station struct {
 	Min   float64
 	Max   float64
 	Sum   float64
-	Count int64
+	Count float64
 }
 
 func (s Station) String() string {
@@ -24,8 +23,7 @@ func (s Station) String() string {
 var seed = maphash.MakeSeed()
 
 type StationMap struct {
-	mutex sync.Mutex
-	m     map[uint64]*Station
+	m map[uint64]*Station
 }
 
 func NewStationMap() *StationMap {

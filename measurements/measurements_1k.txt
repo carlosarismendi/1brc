@@ -331,7 +331,7 @@ Darwin;34.4
 El Paso;13.4
 Jayapura;32.2
 La Paz;18.9
-Wichita;25.9
+Wichita;25.8
 Thessaloniki;16.9
 Erbil;16.2
 Kuopio;0.0
@@ -549,7 +549,7 @@ Yakutsk;-2.1
 Iqaluit;-27.4
 Tabriz;-2.4
 Irkutsk;-7.1
-Abéché;21.9
+Abéché;21.8
 Christchurch;10.5
 Istanbul;15.7
 Sofia;7.5
@@ -605,7 +605,7 @@ Tamanrasset;24.6
 Oulu;10.4
 Managua;35.9
 Brazzaville;26.6
-Baghdad;2.8
+Baghdad;2.7
 Colombo;34.1
 Houston;4.2
 Conakry;23.9
@@ -670,7 +670,7 @@ Makurdi;14.2
 Maputo;30.0
 Petropavlovsk-Kamchatsky;6.0
 Belgrade;-5.9
-Brisbane;8.2
+Brisbane;8.0
 Vaduz;16.0
 Dikson;-4.9
 Jacksonville;14.5
@@ -695,7 +695,7 @@ Belize City;22.2
 Helsinki;14.3
 Reggane;16.4
 Bangui;20.0
-Brisbane;8.7
+Brisbane;8.8
 Yinchuan;23.2
 Kyoto;9.3
 Parakou;25.0
