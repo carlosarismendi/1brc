@@ -13,9 +13,9 @@ func workerOneBrc(o *ChunkedFileReader, output chan<- *StationMap) {
 	stationsMap := NewStationMap()
 
 	for {
-		line, ok, err := o.GetLine()
+		nameBytes, tempBytes, ok, err := o.GetLine()
 		if ok {
-			name, nameBytes, temperature := processLine(line)
+			name, temperature := processLine(nameBytes, tempBytes)
 			stationsMap.Add(name, nameBytes, temperature)
 			continue
 		}

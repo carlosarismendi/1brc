@@ -70,25 +70,21 @@ func (o *ChunkedFileReader) MMap() error {
 	return nil
 }
 
-func (o *ChunkedFileReader) GetLine() ([]byte, bool, error) {
+func (o *ChunkedFileReader) GetLine() (name []byte, temp []byte, ok bool, rErr error) {
 	if len(o.text) == 0 {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 
-	idx := bytes.IndexByte(o.text, byte('\n'))
-	var lineBytes []byte
-	if idx > 0 {
-		lineBytes = o.text[:idx]
-		o.text = o.text[idx+1:]
-		// log.Println(string(lineBytes))
-	} else {
-		lineBytes = o.text
-		o.text = nil
+	idx := bytes.IndexByte(o.text, ';')
+	name = o.text[:idx]
+
+	o.text = o.text[idx+1:]
+	idx = bytes.IndexByte(o.text, '\n')
+	if idx < 0 {
+		return name, o.text, true, nil
 	}
 
-	if len(lineBytes) == 0 {
-		return nil, false, nil
-	}
-
-	return lineBytes, true, nil
+	temp = o.text[:idx]
+	o.text = o.text[idx+1:]
+	return name, temp, true, nil
 }

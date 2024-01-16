@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func BenchmarkMapAccess(b *testing.B) {
+func BenchmarkParseFloat(b *testing.B) {
 	arr := []string{"1.1", "22.0", "33.8", "-4.0", "-85.7"}
 	b.Run("strconv.ParseFloat", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

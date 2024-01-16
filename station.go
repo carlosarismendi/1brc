@@ -12,7 +12,7 @@ type Station struct {
 	Min   float64
 	Max   float64
 	Sum   float64
-	Count float64
+	Count int64
 }
 
 func (s Station) String() string {

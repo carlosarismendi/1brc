@@ -1,23 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"strings"
 	"unsafe"
 )
 
-func processLine(lineBytes []byte) (station string, nameBytes []byte, temperature float64) {
-	// line := unsafe.String(unsafe.SliceData(lineBytes), len(lineBytes))
-	sep := bytes.LastIndexByte(lineBytes, ';')
-
-	tempBytes := lineBytes[sep+1:]
+func processLine(nameBytes, tempBytes []byte) (station string, temperature float64) {
 	temp := parseFloat(tempBytes)
-
-	nameBytes = lineBytes[:sep]
 	name := unsafe.String(unsafe.SliceData(nameBytes), len(nameBytes))
-	return name, nameBytes, temp
+	return name, temp
 }
 
 func parseFloat(s []byte) float64 {
