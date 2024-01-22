@@ -1,4 +1,5 @@
 *.txt*
 *.prof*
+*.trace*
 *measurements
 1brc

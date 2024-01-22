@@ -11,7 +11,7 @@ MEASUREMENTS_FILE=$(MEASUREMENTS_FOLDER)/measurements_$(AMOUNT).txt
 ACTUAL_RESULTS_FILE=$(MEASUREMENTS_FOLDER)/actual_results_$(AMOUNT).txt
 EXPECTED_RESULTS_FILE=$(MEASUREMENTS_FOLDER)/expected_results_$(AMOUNT).txt
 
-ARGS=-measurements-file=$(MEASUREMENTS_FILE) -max-workers=1024 -max-ram=8
+ARGS=-measurements-file=$(MEASUREMENTS_FILE) -max-workers=512 -max-ram=8
 
 .PHONY: build
 build: clean
@@ -25,10 +25,21 @@ time: build
 run: build
 	./$(BIN_FILE) $(ARGS) > $(ACTUAL_RESULTS_FILE)
 
-.PHONY: profile
-profile: build
-	./$(BIN_FILE) $(ARGS) -cpuprofile=1brc.prof
-	echo "top15" | go tool pprof 1brc 1brc.prof
+.PHONY: profile.run
+profile.run: build
+	./$(BIN_FILE) $(ARGS) -cpuprofile=1brc.prof	
+
+.PHONY: profile.open
+profile.open:
+	go tool pprof 1brc 1brc.prof
+
+.PHONY: trace.run
+trace.run: build
+	./$(BIN_FILE) $(ARGS) -traceprofile=1brc.trace
+
+.PHONY: trace.open
+trace.open:
+	go tool trace 1brc.trace
 
 .PHONY: test
 test: AMOUNT=$(TEST_AMOUNT)

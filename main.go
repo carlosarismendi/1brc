@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime/debug"
 	"runtime/pprof"
+	"runtime/trace"
 	"sync"
 )
 
@@ -43,12 +44,7 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 		fileSize = fileStat.Size()
 	}()
 
-	var chunkSize int64
-	if fileSize <= int64(maxRam) {
-		chunkSize = fileSize / int64(maxWorkers)
-	} else {
-		chunkSize = int64(maxRam / maxWorkers)
-	}
+	chunkSize := fileSize / int64(maxWorkers)
 
 	// log.Printf("workers=%v, chunk=%v, ram=%v, fileSize=%v", maxWorkers, chunkSize, maxRam, fileSize)
 	workerMaps := make(chan *StationMap, maxWorkers)
@@ -67,8 +63,6 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 	}()
 
 	wgWorkers := sync.WaitGroup{}
-
-	sem := NewSemaphore(maxWorkers)
 
 	left := fileSize - chunkSize
 	right := fileSize
@@ -91,12 +85,10 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 			diff = n
 		}
 
-		sem.Acquire()
 		wgWorkers.Add(1)
 		go func(workerCfr *ChunkedFileReader) {
 			defer workerCfr.Close()
 			defer wgWorkers.Done()
-			defer sem.Release()
 
 			err := workerCfr.MMap()
 			if err != nil {
@@ -119,6 +111,7 @@ func oneBrc(measurementsFile string, maxWorkers, maxRam int) *StationMap {
 const GB = 1024 * 1024 * 1024
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var traceprofile = flag.String("traceprofile", "", "write trace profile to file")
 var measurementsFile = flag.String("measurements-file", "measurements.txt", "measurements file")
 var maxRam = flag.Int("max-ram", 2, "max ram to use (GB)")
 var maxWorkers = flag.Int("max-workers", 1, "max workers to use")
@@ -133,6 +126,15 @@ func main() {
 		}
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
+	}
+
+	if *traceprofile != "" {
+		f, err := os.Create(*traceprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		trace.Start(f)
+		defer trace.Stop()
 	}
 
 	debug.SetMemoryLimit(int64(*maxRam * GB))
